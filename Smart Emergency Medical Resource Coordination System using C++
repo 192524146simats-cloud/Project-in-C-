@@ -1,0 +1,508 @@
+/*
+  Smart Emergency Medical Resource Coordination System
+  DSA0105 - Object Oriented Programming with C++
+*/
+#include <iostream>
+#include <string>
+#include <iomanip>
+using namespace std;
+
+const int MAX_CASUALTIES = 50;
+const int MAX_RESOURCES  = 50;
+const int MAX_INCIDENTS  = 50;
+const int MAX_LINKED     = 5;
+
+// -------------------- INPUT HELPERS --------------------
+int readInt(const string &prompt) {
+    int value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) { cin.clear(); cin.ignore(10000, '\n'); cout << "Invalid whole number.\n"; continue; }
+        cin.ignore(10000, '\n');
+        return value;
+    }
+}
+int readIntInRange(const string &prompt, int lo, int hi) {
+    while (true) {
+        int v = readInt(prompt);
+        if (v < lo || v > hi) { cout << "Enter a value between " << lo << " and " << hi << ".\n"; continue; }
+        return v;
+    }
+}
+float readFloat(const string &prompt) {
+    float v;
+    while (true) {
+        cout << prompt; cin >> v;
+        if (cin.fail()) { cin.clear(); cin.ignore(10000,'\n'); cout << "Invalid number.\n"; continue; }
+        cin.ignore(10000,'\n'); return v;
+    }
+}
+string readLine(const string &prompt) { string v; cout << prompt; getline(cin, v); return v; }
+
+// -------------------- CASUALTY --------------------
+class Casualty {
+private:
+    string casualtyID, fullName, diagnosis;
+    int yearsOld;
+    static int totalCasualtiesLogged;
+public:
+    Casualty() : casualtyID("NONE"), fullName("Unknown"), diagnosis("Not specified"), yearsOld(0) {}
+    Casualty(string id, string name, int age, string diag)
+        : casualtyID(id), fullName(name), diagnosis(diag), yearsOld(age) { totalCasualtiesLogged++; }
+    Casualty(const Casualty &c) : casualtyID(c.casualtyID), fullName(c.fullName), diagnosis(c.diagnosis), yearsOld(c.yearsOld) {}
+    Casualty& operator=(const Casualty &c) = default;
+    ~Casualty() {}
+    string getCasualtyID() const { return casualtyID; }
+    string getFullName() const { return fullName; }
+    void showCasualty() const {
+        cout << "Casualty ID: " << casualtyID << " | Name: " << fullName
+             << " | Age: " << yearsOld << " | Diagnosis: " << diagnosis << endl;
+    }
+    static int getTotalCasualtiesLogged() { return totalCasualtiesLogged; }
+};
+int Casualty::totalCasualtiesLogged = 0;
+
+// -------------------- ABSTRACT BASE: MedicalResource --------------------
+class MedicalResource {
+protected:
+    string resourceCode, category;
+    bool availableFlag;
+    static int totalUnitsEnrolled;
+public:
+    MedicalResource() : resourceCode("NONE"), category("Unknown"), availableFlag(true) {}
+    MedicalResource(string code, string cat) : resourceCode(code), category(cat), availableFlag(true) { totalUnitsEnrolled++; }
+    MedicalResource(const MedicalResource &m) : resourceCode(m.resourceCode), category(m.category), availableFlag(m.availableFlag) {}
+    MedicalResource& operator=(const MedicalResource &m) = default;
+    virtual ~MedicalResource() {}
+    virtual float calculateLoadFactor() const = 0;
+    virtual void showDetails() const = 0;
+    virtual void activate() { availableFlag = false; }
+    virtual void deactivate() { availableFlag = true; }
+    string getResourceCode() const { return resourceCode; }
+    string getCategory() const { return category; }
+    bool getAvailability() const { return availableFlag; }
+    static int getTotalUnitsEnrolled() { return totalUnitsEnrolled; }
+};
+int MedicalResource::totalUnitsEnrolled = 0;
+
+// -------------------- VIRTUAL BASE BRANCHES --------------------
+class Deployable : virtual public MedicalResource {
+protected:
+    float travelSpeed;
+    string presentZone;
+public:
+    Deployable() : travelSpeed(0), presentZone("Unknown") {}
+    Deployable(float speed, string zone) : travelSpeed(speed), presentZone(zone) {}
+    virtual ~Deployable() {}
+    void moveToZone(const string &z) { presentZone = z; }
+    float getSpeed() const { return travelSpeed; }
+    string getZone() const { return presentZone; }
+};
+class Monitorable : virtual public MedicalResource {
+protected:
+    string monitorTag, currentState;
+public:
+    Monitorable() : monitorTag("NONE"), currentState("Idle") {}
+    Monitorable(string tag) : monitorTag(tag), currentState("Idle") {}
+    virtual ~Monitorable() {}
+    void setState(const string &s) { currentState = s; }
+    string getMonitorTag() const { return monitorTag; }
+    string getState() const { return currentState; }
+};
+
+// -------------------- DIAMOND: RescueVehicle --------------------
+class RescueVehicle : public Deployable, public Monitorable {
+private:
+    int seatCapacity, seatsOccupied;
+    bool oxygenSupport;
+public:
+    RescueVehicle() : MedicalResource(), Deployable(), Monitorable(), seatCapacity(0), seatsOccupied(0), oxygenSupport(false) {}
+    RescueVehicle(string code, float speed, string zone, string tag, int seats, bool oxygen)
+        : MedicalResource(code, "RescueVehicle"), Deployable(speed, zone), Monitorable(tag),
+          seatCapacity(seats), seatsOccupied(0), oxygenSupport(oxygen) {}
+    RescueVehicle(const RescueVehicle &r)
+        : MedicalResource(r), Deployable(r), Monitorable(r),
+          seatCapacity(r.seatCapacity), seatsOccupied(r.seatsOccupied), oxygenSupport(r.oxygenSupport) {}
+    RescueVehicle& operator=(const RescueVehicle &r) = default;
+    ~RescueVehicle() {}
+    void activate() override { availableFlag = false; seatsOccupied = seatCapacity; setState("Dispatched"); }
+    void deactivate() override { availableFlag = true; seatsOccupied = 0; setState("Idle"); }
+    float calculateLoadFactor() const override {
+        if (seatCapacity == 0) return 0.0f;
+        return (static_cast<float>(seatsOccupied) / seatCapacity) * 100.0f;
+    }
+    void showDetails() const override {
+        cout << "[RescueVehicle] Code: " << resourceCode << " | Zone: " << presentZone
+             << " | Speed: " << travelSpeed << " km/h" << " | Seats: " << seatCapacity
+             << " | Oxygen: " << (oxygenSupport ? "Yes" : "No") << " | State: " << currentState
+             << " | Available: " << (availableFlag ? "Yes" : "No")
+             << " | Load Factor: " << fixed << setprecision(1) << calculateLoadFactor() << "%" << endl;
+    }
+    int getSeatCapacity() const { return seatCapacity; }
+    RescueVehicle operator+(const RescueVehicle &other) const {
+        RescueVehicle combined = *this;
+        combined.seatCapacity = this->seatCapacity + other.seatCapacity;
+        return combined;
+    }
+};
+
+// -------------------- MedicalBed --------------------
+class MedicalBed : public MedicalResource {
+private:
+    string ward;
+    bool isolationCapable;
+    int unitsInUse;
+public:
+    MedicalBed() : MedicalResource(), ward("General"), isolationCapable(false), unitsInUse(0) {}
+    MedicalBed(string code, string w, bool iso) : MedicalResource(code, "MedicalBed"), ward(w), isolationCapable(iso), unitsInUse(0) {}
+    MedicalBed(const MedicalBed &b) : MedicalResource(b), ward(b.ward), isolationCapable(b.isolationCapable), unitsInUse(b.unitsInUse) {}
+    MedicalBed& operator=(const MedicalBed &b) = default;
+    ~MedicalBed() {}
+    void activate() override { availableFlag = false; unitsInUse = 1; }
+    void deactivate() override { availableFlag = true; unitsInUse = 0; }
+    float calculateLoadFactor() const override { return unitsInUse * 100.0f; }
+    void showDetails() const override {
+        cout << "[MedicalBed] Code: " << resourceCode << " | Ward: " << ward
+             << " | Isolation: " << (isolationCapable ? "Yes" : "No")
+             << " | Available: " << (availableFlag ? "Yes" : "No")
+             << " | Load Factor: " << fixed << setprecision(1) << calculateLoadFactor() << "%" << endl;
+    }
+};
+
+// -------------------- MedicalKit (equipment) --------------------
+class MedicalKit : public MedicalResource {
+private:
+    string kitName;
+    int stockCount, stockUsed;
+public:
+    MedicalKit() : MedicalResource(), kitName("Unknown"), stockCount(0), stockUsed(0) {}
+    MedicalKit(string code, string name, int stock) : MedicalResource(code, "MedicalKit"), kitName(name), stockCount(stock), stockUsed(0) {}
+    MedicalKit(const MedicalKit &k) : MedicalResource(k), kitName(k.kitName), stockCount(k.stockCount), stockUsed(k.stockUsed) {}
+    MedicalKit& operator=(const MedicalKit &k) = default;
+    ~MedicalKit() {}
+    void activate() override { if (stockUsed < stockCount) stockUsed++; if (stockUsed >= stockCount) availableFlag = false; }
+    void deactivate() override { if (stockUsed > 0) stockUsed--; availableFlag = true; }
+    float calculateLoadFactor() const override {
+        if (stockCount == 0) return 0.0f;
+        return (static_cast<float>(stockUsed) / stockCount) * 100.0f;
+    }
+    void showDetails() const override {
+        cout << "[MedicalKit] Code: " << resourceCode << " | Kit: " << kitName
+             << " | Used: " << stockUsed << "/" << stockCount
+             << " | Available: " << (availableFlag ? "Yes" : "No")
+             << " | Load Factor: " << fixed << setprecision(1) << calculateLoadFactor() << "%" << endl;
+    }
+};
+
+// -------------------- ParamedicSquad --------------------
+class ParamedicSquad : public Deployable {
+private:
+    int squadStrength, membersDeployed;
+    string expertiseArea;
+public:
+    ParamedicSquad() : MedicalResource(), Deployable(), squadStrength(0), membersDeployed(0), expertiseArea("General") {}
+    ParamedicSquad(string code, float speed, string zone, int strength, string expertise)
+        : MedicalResource(code, "ParamedicSquad"), Deployable(speed, zone), squadStrength(strength), membersDeployed(0), expertiseArea(expertise) {}
+    ParamedicSquad(const ParamedicSquad &p)
+        : MedicalResource(p), Deployable(p), squadStrength(p.squadStrength), membersDeployed(p.membersDeployed), expertiseArea(p.expertiseArea) {}
+    ParamedicSquad& operator=(const ParamedicSquad &p) = default;
+    ~ParamedicSquad() {}
+    void activate() override { availableFlag = false; membersDeployed = squadStrength; }
+    void deactivate() override { availableFlag = true; membersDeployed = 0; }
+    float calculateLoadFactor() const override {
+        if (squadStrength == 0) return 0.0f;
+        return (static_cast<float>(membersDeployed) / squadStrength) * 100.0f;
+    }
+    void showDetails() const override {
+        cout << "[ParamedicSquad] Code: " << resourceCode << " | Expertise: " << expertiseArea
+             << " | Strength: " << squadStrength << " | Zone: " << presentZone
+             << " | Available: " << (availableFlag ? "Yes" : "No")
+             << " | Load Factor: " << fixed << setprecision(1) << calculateLoadFactor() << "%" << endl;
+    }
+};
+
+// -------------------- EmergencyIncident --------------------
+class EmergencyIncident {
+private:
+    string incidentCode;
+    Casualty casualty;
+    int severityRank; // 1 highest ... 5 lowest
+    MedicalResource* linkedResource[MAX_LINKED];
+    int linkedCount;
+    bool activeFlag;
+    static int liveIncidents;
+public:
+    EmergencyIncident() : incidentCode("NONE"), casualty(), severityRank(5), linkedCount(0), activeFlag(false) {
+        for (int i = 0; i < MAX_LINKED; i++) linkedResource[i] = nullptr;
+    }
+    EmergencyIncident(string code, const Casualty &c, int severity)
+        : incidentCode(code), casualty(c), severityRank(severity), linkedCount(0), activeFlag(true) {
+        for (int i = 0; i < MAX_LINKED; i++) linkedResource[i] = nullptr;
+        liveIncidents++;
+    }
+    EmergencyIncident(const EmergencyIncident &e)
+        : incidentCode(e.incidentCode), casualty(e.casualty), severityRank(e.severityRank),
+          linkedCount(e.linkedCount), activeFlag(false) {
+        for (int i = 0; i < MAX_LINKED; i++) linkedResource[i] = e.linkedResource[i];
+    }
+    ~EmergencyIncident() {
+        if (activeFlag) {
+            for (int i = 0; i < linkedCount; i++)
+                if (linkedResource[i] != nullptr) linkedResource[i]->deactivate();
+        }
+    }
+    EmergencyIncident& operator=(const EmergencyIncident &e) = default;
+    string getIncidentCode() const { return incidentCode; }
+    int getSeverityRank() const { return severityRank; }
+    bool getIsActive() const { return activeFlag; }
+    bool linkResource(MedicalResource* r) {
+        if (linkedCount >= MAX_LINKED) return false;
+        linkedResource[linkedCount++] = r;
+        return true;
+    }
+    void reviseSeverity(int newRank) { severityRank = newRank; }
+    void closeIncident() {
+        if (activeFlag) {
+            for (int i = 0; i < linkedCount; i++)
+                if (linkedResource[i] != nullptr) linkedResource[i]->deactivate();
+            activeFlag = false;
+            liveIncidents--;
+        }
+    }
+    bool operator<(const EmergencyIncident &other) const { return severityRank < other.severityRank; }
+    friend ostream& operator<<(ostream &out, const EmergencyIncident &e) {
+        out << "Incident: " << e.incidentCode << " | Casualty: " << e.casualty.getFullName()
+            << " | Severity: " << e.severityRank << " | Status: " << (e.activeFlag ? "Active" : "Closed")
+            << " | Linked Resources: " << e.linkedCount;
+        return out;
+    }
+    static int getLiveIncidents() { return liveIncidents; }
+};
+int EmergencyIncident::liveIncidents = 0;
+
+// -------------------- MANAGER: MedicalCoordinationHub --------------------
+class MedicalCoordinationHub {
+private:
+    Casualty casualtyRegistry[MAX_CASUALTIES];
+    int casualtyCount;
+    MedicalResource* resourceRegistry[MAX_RESOURCES];
+    int resourceCount;
+    EmergencyIncident incidentRegistry[MAX_INCIDENTS];
+    int incidentCount;
+
+    int findCasualtyIndex(const string &id) const {
+        for (int i = 0; i < casualtyCount; i++) if (casualtyRegistry[i].getCasualtyID() == id) return i;
+        return -1;
+    }
+    int findIncidentIndex(const string &code) const {
+        for (int i = 0; i < incidentCount; i++) if (incidentRegistry[i].getIncidentCode() == code) return i;
+        return -1;
+    }
+    int findFreeResourceIndex(const string &cat) const {
+        for (int i = 0; i < resourceCount; i++)
+            if (resourceRegistry[i]->getCategory() == cat && resourceRegistry[i]->getAvailability()) return i;
+        return -1;
+    }
+public:
+    MedicalCoordinationHub() : casualtyCount(0), resourceCount(0), incidentCount(0) {
+        for (int i = 0; i < MAX_RESOURCES; i++) resourceRegistry[i] = nullptr;
+    }
+    ~MedicalCoordinationHub() {
+        for (int i = 0; i < incidentCount; i++) if (incidentRegistry[i].getIsActive()) incidentRegistry[i].closeIncident();
+        for (int i = 0; i < resourceCount; i++) delete resourceRegistry[i];
+    }
+    void logCasualty() {
+        if (casualtyCount >= MAX_CASUALTIES) { cout << "Casualty registry full.\n"; return; }
+        string id = readLine("Enter Casualty ID: ");
+        string name = readLine("Enter Casualty Name: ");
+        int age = readIntInRange("Enter Age: ", 0, 130);
+        string diag = readLine("Enter Diagnosis: ");
+        Casualty newC(id, name, age, diag);
+        Casualty auditCopy(newC);
+        casualtyRegistry[casualtyCount++] = newC;
+        cout << "Casualty logged successfully.\n";
+        cout << "Audit copy -> "; auditCopy.showCasualty();
+        cout << "Total casualties logged: " << Casualty::getTotalCasualtiesLogged() << endl;
+    }
+    void enrollResource() {
+        if (resourceCount >= MAX_RESOURCES) { cout << "Resource registry full.\n"; return; }
+        cout << "\nSelect Resource Category:\n1. Rescue Vehicle\n2. Medical Bed\n3. Medical Kit\n4. Paramedic Squad\n";
+        int choice = readIntInRange("Enter choice: ", 1, 4);
+        string code = readLine("Enter Resource Code: ");
+        MedicalResource* nr = nullptr;
+        if (choice == 1) {
+            float speed = readFloat("Enter speed (km/h): ");
+            string zone = readLine("Enter present zone: ");
+            string tag = readLine("Enter monitor tag: ");
+            int seats = readIntInRange("Enter seat capacity: ", 1, 10);
+            int oxy = readIntInRange("Oxygen support? (1=Yes, 0=No): ", 0, 1);
+            nr = new RescueVehicle(code, speed, zone, tag, seats, oxy == 1);
+        } else if (choice == 2) {
+            string ward = readLine("Enter ward name: ");
+            int iso = readIntInRange("Isolation capable? (1=Yes, 0=No): ", 0, 1);
+            nr = new MedicalBed(code, ward, iso == 1);
+        } else if (choice == 3) {
+            string name = readLine("Enter kit name: ");
+            int stock = readIntInRange("Enter total stock: ", 1, 100);
+            nr = new MedicalKit(code, name, stock);
+        } else {
+            float speed = readFloat("Enter speed (km/h): ");
+            string zone = readLine("Enter present zone: ");
+            int strength = readIntInRange("Enter squad strength: ", 1, 20);
+            string expertise = readLine("Enter expertise area: ");
+            nr = new ParamedicSquad(code, speed, zone, strength, expertise);
+        }
+        resourceRegistry[resourceCount++] = nr;
+        cout << "Resource enrolled successfully.\n";
+        cout << "Total resources enrolled: " << MedicalResource::getTotalUnitsEnrolled() << endl;
+    }
+    void openIncident() {
+        if (incidentCount >= MAX_INCIDENTS) { cout << "Incident registry full.\n"; return; }
+        if (casualtyCount == 0) { cout << "No casualties logged yet.\n"; return; }
+        string cid = readLine("Enter Casualty ID for this incident: ");
+        int ci = findCasualtyIndex(cid);
+        if (ci == -1) { cout << "Casualty not found.\n"; return; }
+        string code = readLine("Enter Incident Code: ");
+        int severity = readIntInRange("Enter severity (1=Critical ... 5=Minor): ", 1, 5);
+        EmergencyIncident ne(code, casualtyRegistry[ci], severity);
+        EmergencyIncident snap(ne);
+        incidentRegistry[incidentCount++] = ne;
+        cout << "Emergency incident opened successfully.\n";
+        cout << "Audit snapshot -> " << snap << endl;
+        cout << "Total live incidents: " << EmergencyIncident::getLiveIncidents() << endl;
+    }
+    void showCasualties() const {
+        if (casualtyCount == 0) { cout << "No casualties logged.\n"; return; }
+        cout << "\n--- Logged Casualties (" << casualtyCount << ") ---\n";
+        for (int i = 0; i < casualtyCount; i++) casualtyRegistry[i].showCasualty();
+    }
+    void showResources() const {
+        if (resourceCount == 0) { cout << "No resources enrolled.\n"; return; }
+        cout << "\n--- Enrolled Resources (" << resourceCount << ") ---\n";
+        for (int i = 0; i < resourceCount; i++) resourceRegistry[i]->showDetails();
+    }
+    void dispatchResource() {
+        if (incidentCount == 0) { cout << "No incidents exist.\n"; return; }
+        string code = readLine("Enter Incident Code to dispatch a resource to: ");
+        int ii = findIncidentIndex(code);
+        if (ii == -1) { cout << "Incident not found.\n"; return; }
+        if (!incidentRegistry[ii].getIsActive()) { cout << "This incident is closed.\n"; return; }
+        cout << "\nSelect Required Category:\n1. Rescue Vehicle\n2. Medical Bed\n3. Medical Kit\n4. Paramedic Squad\n";
+        int choice = readIntInRange("Enter choice: ", 1, 4);
+        string cat = (choice == 1) ? "RescueVehicle" : (choice == 2) ? "MedicalBed" : (choice == 3) ? "MedicalKit" : "ParamedicSquad";
+        int ri = findFreeResourceIndex(cat);
+        if (ri == -1) { cout << "No available " << cat << " at this time.\n"; return; }
+        resourceRegistry[ri]->activate();
+        incidentRegistry[ii].linkResource(resourceRegistry[ri]);
+        cout << cat << " (" << resourceRegistry[ri]->getResourceCode() << ") dispatched successfully to incident " << code << ".\n";
+    }
+    void reviseIncident() {
+        if (incidentCount == 0) { cout << "No incidents exist.\n"; return; }
+        string code = readLine("Enter Incident Code to revise: ");
+        int ii = findIncidentIndex(code);
+        if (ii == -1) { cout << "Incident not found.\n"; return; }
+        cout << "1. Revise severity\n2. Close incident\n";
+        int choice = readIntInRange("Enter choice: ", 1, 2);
+        if (choice == 1) {
+            int newSeverity = readIntInRange("Enter new severity (1=Critical ... 5=Minor): ", 1, 5);
+            incidentRegistry[ii].reviseSeverity(newSeverity);
+            cout << "Incident severity revised.\n";
+        } else {
+            incidentRegistry[ii].closeIncident();
+            cout << "Incident closed. Linked resources released.\n";
+        }
+    }
+    void rankIncidents() {
+        if (incidentCount < 2) { cout << "Need at least two incidents to rank.\n"; return; }
+        string id1 = readLine("Enter first Incident Code: ");
+        string id2 = readLine("Enter second Incident Code: ");
+        int i1 = findIncidentIndex(id1), i2 = findIncidentIndex(id2);
+        if (i1 == -1 || i2 == -1) { cout << "One or both incidents not found.\n"; return; }
+        cout << "Incident 1 -> " << incidentRegistry[i1] << endl;
+        cout << "Incident 2 -> " << incidentRegistry[i2] << endl;
+        if (incidentRegistry[i1] < incidentRegistry[i2])
+            cout << incidentRegistry[i1].getIncidentCode() << " needs attention first.\n";
+        else if (incidentRegistry[i2] < incidentRegistry[i1])
+            cout << incidentRegistry[i2].getIncidentCode() << " needs attention first.\n";
+        else
+            cout << "Both incidents have equal severity.\n";
+    }
+    void computeLoadFactors() const {
+        if (resourceCount == 0) { cout << "No resources enrolled.\n"; return; }
+        cout << "\n--- Resource Load Factors ---\n";
+        for (int i = 0; i < resourceCount; i++)
+            cout << resourceRegistry[i]->getResourceCode() << " (" << resourceRegistry[i]->getCategory() << "): "
+                 << fixed << setprecision(1) << resourceRegistry[i]->calculateLoadFactor() << "%\n";
+    }
+    void publishSummary() const {
+        cout << "\n===== EMERGENCY COORDINATION SUMMARY =====\n";
+        cout << "Total Casualties Logged  : " << Casualty::getTotalCasualtiesLogged() << endl;
+        cout << "Total Resources Enrolled : " << MedicalResource::getTotalUnitsEnrolled() << endl;
+        cout << "Currently Live Incidents : " << EmergencyIncident::getLiveIncidents() << endl;
+        cout << "\n-- Resource Status --\n";
+        for (int i = 0; i < resourceCount; i++) resourceRegistry[i]->showDetails();
+        cout << "\n-- Incident Summary --\n";
+        for (int i = 0; i < incidentCount; i++) cout << incidentRegistry[i] << endl;
+        cout << "===========================================\n";
+    }
+    void mergeVehicles() {
+        cout << "Combine seat capacity of two rescue vehicles (operator+ demo).\n";
+        string id1 = readLine("Enter first Vehicle Code: ");
+        string id2 = readLine("Enter second Vehicle Code: ");
+        int i1 = -1, i2 = -1;
+        for (int i = 0; i < resourceCount; i++) {
+            if (resourceRegistry[i]->getCategory() == "RescueVehicle" && resourceRegistry[i]->getResourceCode() == id1) i1 = i;
+            if (resourceRegistry[i]->getCategory() == "RescueVehicle" && resourceRegistry[i]->getResourceCode() == id2) i2 = i;
+        }
+        if (i1 == -1 || i2 == -1) { cout << "One or both vehicles not found.\n"; return; }
+        RescueVehicle* v1 = dynamic_cast<RescueVehicle*>(resourceRegistry[i1]);
+        RescueVehicle* v2 = dynamic_cast<RescueVehicle*>(resourceRegistry[i2]);
+        if (v1 == nullptr || v2 == nullptr) { cout << "Type mismatch.\n"; return; }
+        RescueVehicle combined = (*v1) + (*v2);
+        cout << "Combined seat capacity: " << combined.getSeatCapacity() << " seats.\n";
+    }
+    void mainMenu() const {
+        cout << "\n===== SMART EMERGENCY MEDICAL RESOURCE COORDINATION SYSTEM =====\n";
+        cout << "1. Log Casualty\n";
+        cout << "2. Enroll Medical Resource\n";
+        cout << "3. Open Emergency Incident\n";
+        cout << "4. Show Casualties\n";
+        cout << "5. Show Resources\n";
+        cout << "6. Dispatch Resource to Incident\n";
+        cout << "7. Revise / Close Incident\n";
+        cout << "8. Rank Incident Severity\n";
+        cout << "9. Compute Resource Load Factors\n";
+        cout << "10. Publish Coordination Summary\n";
+        cout << "11. Merge Two Rescue Vehicles (operator+ demo)\n";
+        cout << "0. Exit\n";
+        cout << "=================================================================\n";
+    }
+    void run() {
+        int choice;
+        do {
+            mainMenu();
+            choice = readIntInRange("Enter your choice: ", 0, 11);
+            switch (choice) {
+                case 1: logCasualty(); break;
+                case 2: enrollResource(); break;
+                case 3: openIncident(); break;
+                case 4: showCasualties(); break;
+                case 5: showResources(); break;
+                case 6: dispatchResource(); break;
+                case 7: reviseIncident(); break;
+                case 8: rankIncidents(); break;
+                case 9: computeLoadFactors(); break;
+                case 10: publishSummary(); break;
+                case 11: mergeVehicles(); break;
+                case 0: cout << "Exiting system. Goodbye!\n"; break;
+            }
+        } while (choice != 0);
+    }
+};
+
+int main() {
+    MedicalCoordinationHub hub;
+    hub.run();
+    return 0;
+}
